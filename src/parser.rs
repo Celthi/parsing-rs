@@ -5,6 +5,7 @@ use std::vec::Vec;
 pub enum Value {
     Null,
     Bool(bool),
+    Number(f64),
     String(String),
     Array(Vec<Value>),
     Object(HashMap<String, Value>),
@@ -32,11 +33,11 @@ fn parse_value(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str
             }
         }
         TokenType::SLBracket => parse_array(lexemes),
-        TokenType::String => parse_bool_null(lexemes),
+        TokenType::String => parse_bool_null_number(lexemes),
         _ => Err("expect a value"),
     }
 }
-fn parse_bool_null(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
+fn parse_bool_null_number(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
     if lexemes[0].lexeme == "true" {
         return Ok((Value::Bool(true), lexemes[1..].to_owned()));
     }
@@ -46,7 +47,10 @@ fn parse_bool_null(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static
     if lexemes[0].lexeme == "null" {
         return Ok((Value::Null, lexemes[1..].to_owned()));
     }
-    Err("Unknown keywords.")
+    match lexemes[0].lexeme.parse::<f64>() {
+        Ok(n) => Ok((Value::Number(n), lexemes[1..].to_owned())),
+        Err(e) => Err("Unknown keyword. Not a number, or true, or false, or null"),
+    }
 }
 fn parse_object(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
     let mut map = HashMap::new();
@@ -273,6 +277,31 @@ mod test {
     }
     #[test]
     fn parse_array() {
-        // assert_eq!(["hi"], super::parse("[\"hi\"]"));
+        if let Ok(v) = parse(r#"[ true, false, null, "hi" ] "#) {
+            assert!(v.1.len() == 0);
+            match v.0 {
+                Value::Array(o) => {
+                    assert_eq!(o.len(), 4);
+                    assert_eq!(o, vec![Value::Bool(true), Value::Bool(false), Value::Null, Value::String("hi".to_owned())]);
+                }
+                _ => assert!(false),
+            };
+        } else {
+            assert!(false);
+        }
+    }
+    #[test]
+    fn parse_number() {
+        if let Ok(v) = parse(r#"345 "#) {
+            assert!(v.1.len() == 0);
+            match v.0 {
+                Value::Number(o) => {
+                    assert_eq!(o, 345f64);
+                }
+                _ => assert!(false),
+            };
+        } else {
+            assert!(false);
+        }
     }
 }
