@@ -49,7 +49,7 @@ fn parse_bool_null_number(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &
     }
     match lexemes[0].lexeme.parse::<f64>() {
         Ok(n) => Ok((Value::Number(n), lexemes[1..].to_owned())),
-        Err(e) => Err("Unknown keyword. Not a number, or true, or false, or null"),
+        Err(_e) => Err("Unknown keyword. Not a number, or true, or false, or null"),
     }
 }
 fn parse_object(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {

@@ -10,11 +10,16 @@ pub enum Value {
     Array(Vec<Value>),
     Object(HashMap<String, Value>),
 }
-fn parse_lt(s: &str) -> Result<Value, &'static str> {
+
+pub fn parse_lt(s: &str) -> Result<Value, &'static str> {
     let lexemes = gen_lexemes(s);
-    let v = parse_value(&lexemes)?;
-    Ok(v.0)
+    let (value, lexemes) = parse_value(&lexemes)?;
+    if lexemes.len() > 0 {
+        return Err("trailing string after json.");
+    }
+    Ok(value)
 }
+
 fn parse_value<'a, 'b>(
     lexemes: &'a [Lexeme<'b>],
 ) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
@@ -31,7 +36,7 @@ fn parse_value<'a, 'b>(
         return parse_string(lexemes);
     }
     if lexemes[0]._type == b'n' {
-        return Ok((Value::Null, &lexemes[1..lexemes.len()]));
+        return Ok((Value::Null, &lexemes[1..]));
     }
     if lexemes[0]._type == b't' {
         return Ok((
@@ -40,16 +45,16 @@ fn parse_value<'a, 'b>(
             } else {
                 false
             }),
-            &lexemes[1..lexemes.len()],
+            &lexemes[1..],
         ));
     }
-    // if it is number
+    // if it is number, for simplicity, we use f64 always
     if lexemes[0]._type == b'u' {
         if let Ok(num) = std::str::from_utf8(lexemes[0].s).unwrap().parse::<f64>() {
-            return Ok((Value::Number(num), &lexemes[1..lexemes.len()]));
+            return Ok((Value::Number(num), &lexemes[1..]));
         }
     }
-    unimplemented!()
+    Err("unsupported format.")
 }
 
 fn parse_object<'a, 'b>(
@@ -58,44 +63,39 @@ fn parse_object<'a, 'b>(
     if lexemes.len() < 2 || lexemes[0]._type != b'{' {
         return Err("Not a object.");
     }
+    // empty object
     if lexemes[1]._type == b'}' {
-        return Ok((Value::Object(HashMap::new()), &lexemes[2..lexemes.len()]));
+        return Ok((Value::Object(HashMap::new()), &lexemes[2..]));
     }
     let mut m = HashMap::new();
-    let mut lexemes = &lexemes[1..lexemes.len()];
+    let mut lexemes = &lexemes[1..];
     loop {
-        if let Ok(k) = parse_string(lexemes) {
-            match k.0 {
-                Value::String(s) => {
-                    if k.1[0]._type != b':' {
-                        return Err("colon expected.");
-                    }
-                    lexemes = &k.1[1..k.1.len()];
-                    if let Ok(v) = parse_value(lexemes) {
-                        let value = v.0;
-                        m.insert(s, value);
-                        if v.1[0]._type != b',' {
-                            lexemes = v.1;
-
-                            break;
-                        }
-                        lexemes = &v.1[1..v.1.len()];
-                    } else {
-                        return Err("not a value.");
-                    }
+        match parse_string(lexemes) {
+            Ok((Value::String(s), lexeme)) => {
+                if lexeme[0]._type != b':' {
+                    return Err("colon expected.");
                 }
-                _ => {
-                    return Err("not a string.");
+                lexemes = &lexeme[1..];
+                if let Ok((value, lexeme)) = parse_value(lexemes) {
+                    m.insert(s, value);
+                    if lexeme[0]._type != b',' {
+                        lexemes = lexeme;
+                        break;
+                    }
+                    lexemes = &lexeme[1..];
+                } else {
+                    return Err("not a value.");
                 }
             }
-        } else {
-            return Err("string expected.");
+            _ => {
+                return Err("not a string.");
+            }
         }
     }
     if lexemes.len() < 1 || lexemes[0]._type != b'}' {
         return Err("right bracket expected.");
     }
-    return Ok((Value::Object(m), &lexemes[1..lexemes.len()]));
+    return Ok((Value::Object(m), &lexemes[1..]));
 }
 
 fn parse_array<'a, 'b>(
@@ -105,8 +105,7 @@ fn parse_array<'a, 'b>(
         return Err("expect array");
     }
     let mut vec = vec![];
-    let len = lexemes.len();
-    let mut lexemes = &lexemes[1..len];
+    let mut lexemes = &lexemes[1..];
     loop {
         if lexemes.len() == 0 {
             return Err("array expected.");
@@ -114,22 +113,23 @@ fn parse_array<'a, 'b>(
         if lexemes[0]._type == b']' {
             break;
         }
-        if let Ok(v) = parse_value(lexemes) {
-            vec.push(v.0);
-            lexemes = v.1;
-            if lexemes.len() == 0 {
+        if let Ok((value, lexeme)) = parse_value(lexemes) {
+            vec.push(value);
+            if lexeme.len() == 0 {
                 return Err("array expected.");
             }
-            if lexemes[0]._type == b',' {
-                lexemes = &lexemes[1..lexemes.len()];
+            if lexeme[0]._type == b',' {
+                lexemes = &lexeme[1..];
+            } else {
+                lexemes = lexeme;
             }
         } else {
             return Err("expect value inside array");
         }
     }
-
-    Ok((Value::Array(vec), &lexemes[1..lexemes.len()]))
+    Ok((Value::Array(vec), &lexemes[1..]))
 }
+
 fn parse_string<'a, 'b>(
     lexemes: &'a [Lexeme<'b>],
 ) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
@@ -142,9 +142,10 @@ fn parse_string<'a, 'b>(
     }
     Ok((
         Value::String(std::str::from_utf8(lexemes[1].s).unwrap().to_owned()),
-        &lexemes[3..lexemes.len()],
+        &lexemes[3..],
     ))
 }
+
 #[cfg(test)]
 mod test {
     use super::*;
