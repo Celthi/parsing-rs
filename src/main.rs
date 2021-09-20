@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 
-mod parser;
 mod lexer;
-mod lexer_lt;
-mod parser_lt;
+mod parser;
 fn main() {
     println!("Hello, world!");
-    let _v = parser_lt::parse_lt(r#"{"key":"value"}"#);
+    let _v = parser::parse_lt(r#"{"key":"value"}"#);
 
 }

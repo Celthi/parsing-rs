@@ -1,6 +1,6 @@
-use crate::lexer::*;
 use std::collections::HashMap;
-use std::vec::Vec;
+
+use crate::lexer::{gen_lexemes, Lexeme};
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Null,
@@ -11,297 +11,288 @@ pub enum Value {
     Object(HashMap<String, Value>),
 }
 
-fn parse_value(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
-    if lexemes.len() == 0 {
-        return Err("Empty value");
-    }
-    match lexemes[0]._type {
-        TokenType::LBracket => parse_object(lexemes),
-        TokenType::Quote => {
-            let (s, lexemes) = get_key(&lexemes.to_owned())?;
-            Ok((Value::String(s), lexemes))
-        }
-        TokenType::Bool => Ok((
-            Value::Bool(lexemes[0].lexeme == "true"),
-            lexemes[1..].to_owned(),
-        )),
-        TokenType::Null => {
-            if lexemes.len() == 1 {
-                Ok((Value::Null, vec![]))
-            } else {
-                Ok((Value::Null, lexemes[1..].to_owned()))
-            }
-        }
-        TokenType::SLBracket => parse_array(lexemes),
-        TokenType::String => parse_bool_null_number(lexemes),
-        _ => Err("expect a value"),
-    }
-}
-fn parse_bool_null_number(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
-    if lexemes[0].lexeme == "true" {
-        return Ok((Value::Bool(true), lexemes[1..].to_owned()));
-    }
-    if  lexemes[0].lexeme == "false" {
-        return Ok((Value::Bool(false), lexemes[1..].to_owned()));
-    }
-    if lexemes[0].lexeme == "null" {
-        return Ok((Value::Null, lexemes[1..].to_owned()));
-    }
-    match lexemes[0].lexeme.parse::<f64>() {
-        Ok(n) => Ok((Value::Number(n), lexemes[1..].to_owned())),
-        Err(_e) => Err("Unknown keyword. Not a number, or true, or false, or null"),
-    }
-}
-fn parse_object(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
-    let mut map = HashMap::new();
-    if lexemes.len() == 1 {
-        return Err("expect more data");
-    }
-    if lexemes.len() == 2 {
-        if lexemes[1]._type == TokenType::RBracket {
-            return Ok((Value::Object(map), vec![]));
-        } else {
-            return Err("Ill format data");
-        }
-    }
-    let (key, lexemes) = get_key(&lexemes[1..].to_vec())?;
-    let (_, lexemes) = get_colon(&lexemes)?;
+pub fn parse_lt(s: &str) -> Result<Value, &'static str> {
+    let lexemes = gen_lexemes(s);
     let (value, lexemes) = parse_value(&lexemes)?;
-    map.insert(key, value);
-    let mut lexemes = lexemes.to_owned();
-    loop {
-        if lexemes.len() > 0 && lexemes[0]._type == TokenType::Commas {
-            let (key, lex) = get_key(&lexemes[1..].to_owned())?;
-            let (_, lex) = get_colon(&lex)?;
-            let (value, lex) = parse_value(&lex)?;
-            lexemes = lex;
-            map.insert(key, value);
-        } else {
-            break;
+    if lexemes.len() > 0 {
+        return Err("trailing string after json.");
+    }
+    Ok(value)
+}
+
+fn parse_value<'a, 'b>(
+    lexemes: &'a [Lexeme<'b>],
+) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
+    if lexemes.len() == 0 {
+        return Ok((Value::String("".to_owned()), lexemes));
+    }
+    if lexemes[0]._type == b'{' {
+        return parse_object(lexemes);
+    }
+    if lexemes[0]._type == b'[' {
+        return parse_array(lexemes);
+    }
+    if lexemes[0]._type == b'"' {
+        return parse_string(lexemes);
+    }
+    if lexemes[0]._type == b'n' {
+        return Ok((Value::Null, &lexemes[1..]));
+    }
+    if lexemes[0]._type == b't' {
+        return Ok((
+            Value::Bool(if lexemes[0].s == "true".as_bytes() {
+                true
+            } else {
+                false
+            }),
+            &lexemes[1..],
+        ));
+    }
+    // if it is number, for simplicity, we use f64 always
+    if lexemes[0]._type == b'u' {
+        if let Ok(num) = std::str::from_utf8(lexemes[0].s).unwrap().parse::<f64>() {
+            return Ok((Value::Number(num), &lexemes[1..]));
         }
     }
-    if lexemes[0]._type != TokenType::RBracket {
-        return Err("object bracket is not matched.")
-    }
-    Ok((Value::Object(map), lexemes[1..].to_owned()))
-}
-fn get_key(lexemes: &Vec<Token>) -> Result<(String, Vec<Token>), &'static str> {
-    if lexemes.len() < 3 {
-        return Err("String should be enclosed with quote.");
-    }
-
-    if lexemes[1]._type == TokenType::String {
-        return Ok((lexemes[1].lexeme.clone(), lexemes[3..].to_vec()));
-    }
-    Err("Key should be string!")
+    Err("unsupported format.")
 }
 
-fn get_colon(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
-    if lexemes[0]._type == TokenType::Colon {
-        return Ok((Value::Null, lexemes[1..].to_vec()));
+fn parse_object<'a, 'b>(
+    lexemes: &'a [Lexeme<'b>],
+) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
+    if lexemes.len() < 2 || lexemes[0]._type != b'{' {
+        return Err("Not a object.");
     }
-    Err("Expect a colon!")
-}
-fn parse_array(lexemes: &Vec<Token>) -> Result<(Value, Vec<Token>), &'static str> {
-    let mut arr = Vec::new();
-    if lexemes.len() < 2 {
-        return Err("expect more data for array.");
+    // empty object
+    if lexemes[1]._type == b'}' {
+        return Ok((Value::Object(HashMap::new()), &lexemes[2..]));
     }
-
-    if lexemes[1]._type == TokenType::SRBracket {
-        return Ok((Value::Array(arr), lexemes[2..].to_owned()));
-    }
-
-    let (value, lexemes) = parse_value(&lexemes[1..].to_owned())?;
-    arr.push(value);
-    let mut lexemes = lexemes.to_owned();
+    let mut m = HashMap::new();
+    let mut lexemes = &lexemes[1..];
     loop {
-        if lexemes.len() > 0 && lexemes[0]._type == TokenType::Commas {
-            let (value, lex) = parse_value(&lexemes[1..].to_owned())?;
-            lexemes = lex;
-            arr.push(value);
+        if let Ok((Value::String(s), lexeme)) = parse_string(lexemes) {
+            if lexeme[0]._type != b':' {
+                return Err("colon expected.");
+            }
+            lexemes = &lexeme[1..];
+            if let Ok((value, lexeme)) = parse_value(lexemes) {
+                m.insert(s, value);
+                if lexeme[0]._type != b',' {
+                    lexemes = lexeme;
+                    break;
+                }
+                lexemes = &lexeme[1..];
+            } else {
+                return Err("not a value.");
+            }
         } else {
-            break;
+            return Err("not a string.");
         }
     }
-
-    Ok((Value::Array(arr), lexemes[1..].to_owned()))
+    if lexemes.len() < 1 || lexemes[0]._type != b'}' {
+        return Err("right bracket expected.");
+    }
+    return Ok((Value::Object(m), &lexemes[1..]));
 }
-pub fn parse(s: &str) -> Result<(Value, Vec<Token>), &str> {
-    let lexemes = get_lexemes(s);
-    parse_value(&lexemes)
+
+fn parse_array<'a, 'b>(
+    lexemes: &'a [Lexeme<'b>],
+) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
+    if lexemes.len() < 2 || lexemes[0]._type != b'[' {
+        return Err("expect array");
+    }
+    let mut vec = vec![];
+    let mut lexemes = &lexemes[1..];
+    loop {
+        if lexemes.len() == 0 {
+            return Err("array expected.");
+        }
+        if lexemes[0]._type == b']' {
+            break;
+        }
+        if let Ok((value, lexeme)) = parse_value(lexemes) {
+            vec.push(value);
+            if lexeme.len() == 0 {
+                return Err("array expected.");
+            }
+            if lexeme[0]._type == b',' {
+                lexemes = &lexeme[1..];
+            } else {
+                lexemes = lexeme;
+            }
+        } else {
+            return Err("expect value inside array");
+        }
+    }
+    Ok((Value::Array(vec), &lexemes[1..]))
+}
+
+fn parse_string<'a, 'b>(
+    lexemes: &'a [Lexeme<'b>],
+) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
+    if lexemes.len() < 3
+        || lexemes[0]._type != b'"'
+        || lexemes[2]._type != b'"'
+        || lexemes[1]._type != b's'
+    {
+        return Err("expected string");
+    }
+    Ok((
+        Value::String(std::str::from_utf8(lexemes[1].s).unwrap().to_owned()),
+        &lexemes[3..],
+    ))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    fn test_lexemes() {}
+    use std::collections::HashMap;
     #[test]
-    fn parse_string() {
-        if let Ok(v) = parse(r#"{"key": "value" }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o["key"], Value::String("value".to_owned()));
-                    assert_eq!(o.len(), 1);
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+    fn test_parsing() {
+        {
+            let v = parse_lt("{}");
+            let exp = Value::Object(HashMap::new());
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key":"value"}"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::String("value".to_owned()));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key": null}"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Null);
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key": true   }"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Bool(true));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key": false   }"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Bool(false));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key": false , "k2": "v2"  }"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Bool(false));
+            m.insert("k2".to_owned(), Value::String("v2".to_owned()));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
+        }
+        {
+            let v = parse_lt(r#"{"key": false , "k2": {"k3": null}  }"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Bool(false));
+            let mut nm = HashMap::new();
+            nm.insert("k3".to_owned(), Value::Null);
+            m.insert("k2".to_owned(), Value::Object(nm));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
         }
 
-        if let Ok(v) = parse("{}") {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 0);
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"[]"#);
+            let vec = vec![];
+            let exp = Value::Array(vec);
+            assert_eq!(exp, v.unwrap());
         }
-        if let Ok(v) = parse(r#"{"key": []}"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Array(vec![]));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
-        }
-        if let Ok(v) = parse(r#"{"key": ["value"]}"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Array(vec![Value::String("value".to_owned())]));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
-        }
-        if let Ok(v) = parse(r#"{"key": ["value", "v2"]}"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Array(vec![Value::String("value".to_owned()), Value::String("v2".to_owned())]));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
-        }
-        if let Ok(v) = parse(r#"{"key": [  ]  }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Array(vec![]));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"[ null ]"#);
+            let mut vec = vec![];
+            vec.push(Value::Null);
+            let exp = Value::Array(vec);
+            assert_eq!(exp, v.unwrap());
         }
 
-        if let Ok(v) = parse(r#"{"key": ["value"], "k2": "hi"}"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 2);
-                    assert_eq!(o["key"], Value::Array(vec![Value::String("value".to_owned())]));
-                    assert_eq!(o["k2"], Value::String("hi".to_owned()));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"[ null , false]"#);
+            let mut vec = vec![];
+            vec.push(Value::Null);
+            vec.push(Value::Bool(false));
+            let exp = Value::Array(vec);
+            assert_eq!(exp, v.unwrap());
         }
 
-        if let Ok(v) = parse(r#"{"key": true  }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Bool(true));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"[ null , false, {"k1": "v2"}]"#);
+            let mut vec = vec![];
+            vec.push(Value::Null);
+            vec.push(Value::Bool(false));
+            let mut m = HashMap::new();
+            m.insert("k1".to_owned(), Value::String("v2".to_owned()));
+            vec.push(Value::Object(m));
+            let exp = Value::Array(vec);
+            assert_eq!(exp, v.unwrap());
         }
 
-        if let Ok(v) = parse(r#"{"key": false  }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Bool(false));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"[ null , false, {"k1": "v2"}, "ss"]"#);
+            let mut vec = vec![];
+            vec.push(Value::Null);
+            vec.push(Value::Bool(false));
+            let mut m = HashMap::new();
+            m.insert("k1".to_owned(), Value::String("v2".to_owned()));
+            vec.push(Value::Object(m));
+            vec.push(Value::String("ss".to_owned()));
+            let exp = Value::Array(vec);
+            assert_eq!(exp, v.unwrap());
         }
-        if let Ok(v) = parse(r#"{"key": null  }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Null);
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+
+        {
+            let v = parse_lt(r#"{ "kk": [ null , false, {"k1": "v2"}, "ss"]}"#);
+            let mut vec = vec![];
+            vec.push(Value::Null);
+            vec.push(Value::Bool(false));
+            let mut m = HashMap::new();
+            m.insert("k1".to_owned(), Value::String("v2".to_owned()));
+            vec.push(Value::Object(m));
+            vec.push(Value::String("ss".to_owned()));
+            let mut mo = HashMap::new();
+            mo.insert("kk".to_owned(), Value::Array(vec));
+            let exp = Value::Object(mo);
+            assert_eq!(exp, v.unwrap());
         }
-        if let Ok(v) = parse(r#"{"key": [ true, false, null ]  }"#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Object(o) => {
-                    assert_eq!(o.len(), 1);
-                    assert_eq!(o["key"], Value::Array(vec![Value::Bool(true), Value::Bool(false), Value::Null]));
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+
+        {
+            let v = parse_lt(r#"{"key":345}"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Number(345.0));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
         }
-    }
-    #[test]
-    fn parse_array() {
-        if let Ok(v) = parse(r#"[ true, false, null, "hi" ] "#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Array(o) => {
-                    assert_eq!(o.len(), 4);
-                    assert_eq!(o, vec![Value::Bool(true), Value::Bool(false), Value::Null, Value::String("hi".to_owned())]);
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+
+        {
+            let v = parse_lt(r#"{"key":345, "k2": [123, true]}"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Number(345.0));
+            let mut vec = vec![];
+            vec.push(Value::Number(123.0));
+            vec.push(Value::Bool(true));
+            m.insert("k2".to_owned(), Value::Array(vec));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
         }
-    }
-    #[test]
-    fn parse_number() {
-        if let Ok(v) = parse(r#"345 "#) {
-            assert!(v.1.len() == 0);
-            match v.0 {
-                Value::Number(o) => {
-                    assert_eq!(o, 345f64);
-                }
-                _ => assert!(false),
-            };
-        } else {
-            assert!(false);
+        {
+            let v = parse_lt(r#"{"key":345, "k2": [123e2, true]}"#);
+            let mut m = HashMap::new();
+            m.insert("key".to_owned(), Value::Number(345.0));
+            let mut vec = vec![];
+            vec.push(Value::Number(123e2));
+            vec.push(Value::Bool(true));
+            m.insert("k2".to_owned(), Value::Array(vec));
+            let exp = Value::Object(m);
+            assert_eq!(exp, v.unwrap());
         }
     }
 }

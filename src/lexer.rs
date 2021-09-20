@@ -1,286 +1,427 @@
-use std::{ vec::Vec};
-#[derive(PartialEq, Debug, Clone)]
-pub enum TokenType {
-    Unknown,
-    Colon,       // :
-    Commas,      // ,
-    SLBracket, // [
-    SRBracket, // ]
-    LBracket,   // {
-    RBracket,   // }
-    String,
-    Quote, // "
-    Bool,  // true or false
-    Null,  // null
+use std::vec::Vec;
+#[derive(PartialEq, Debug)]
+pub struct Lexeme<'a> {
+    pub s: &'a [u8],
+    pub start: usize, // start position
+    pub _type: u8,
 }
-#[derive(PartialEq, Clone)]
-pub struct Token {
-    pub _type: TokenType,
-    pub lexeme: String,
-}
+/// b'n' -> null
+/// b'u' -> number
+/// b's' -> string in quote
+/// b't' -> true of false
+/// b'k' -> keyword
 
-fn is_whitespace(i: u8) -> bool {
-    i == b' ' || i == b'\t' || i == b'\n' || i == b'\r'
-}
-fn add_token(res: &mut Vec<Token>, i: usize, start: usize, s: &str) {
-    if i - start != 0 {
-        res.push(Token{_type: TokenType::String, lexeme: s[start..i].to_owned()});
+/// use DFA to produce the lexemes from the string s.
+pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
+    if s.len() == 0 {
+        return vec![];
     }
-}
-pub fn get_lexemes(s: &str) -> Vec<Token> {
-    let l = s.len();
-    let mut res = Vec::new();
-    let mut i: usize = 0;
-    let mut in_quote = false;
-    let mut start = 0usize;
     let bytes = s.as_bytes();
+    let mut lexemes = vec![];
+    let mut i = 0;
     loop {
-        if i >= l {
+        if i >= bytes.len() {
             break;
         }
-        if bytes[i] == b'\"' {
-            if in_quote {
-                let lexeme = s[start..i].to_owned();
-                res.push(Token {
-                    _type: TokenType::String,
-                    lexeme,
-                });
-                in_quote = false;
-                res.push(Token {
-                    _type: TokenType::Quote,
-                    lexeme: "\"".to_owned(),
-                });
-                start = i+1
-            } else {
-                in_quote = true;
-                start = i+1;
-                res.push(Token {
-                    _type: TokenType::Quote,
-                    lexeme: "\"".to_owned(),
-                });
+        match bytes[i] {
+            b'"' => {
+                let lexeme = Lexeme {
+                    s: &bytes[i..i + 1],
+                    start: i,
+                    _type: b'"',
+                };
+                lexemes.push(lexeme);
+                if i + 1 >= bytes.len() {
+                    break;
+                }
+                let (start, end) = get_string_in_quote(bytes, i + 1);
+                if end > start {
+                    let lexeme = Lexeme {
+                        s: &bytes[start..end],
+                        start,
+                        _type: b's',
+                    };
+                    lexemes.push(lexeme);
+                    if end < s.len() && bytes[end] == b'"' {
+                        let lexeme = Lexeme {
+                            s: &bytes[end..end + 1],
+                            start: end,
+                            _type: b'"',
+                        };
+                        lexemes.push(lexeme);
+                        i = end + 1;
+                    } else {
+                        i = end;
+                    }
+                } else {
+                    i = end;
+                }
             }
-        } else if bytes[i] == b'{' {
-            add_token(&mut res, i, start, s);
+            b'{' | b'}' | b'[' | b']' | b':' | b',' => {
+                let lexeme = Lexeme {
+                    s: &bytes[i..i + 1],
+                    start: i,
+                    _type: bytes[i],
+                };
+                lexemes.push(lexeme);
+                i += 1;
+            }
+            b' ' | b'\t' | b'\n' | b'\r' => {
+                i += 1;
+            }
+            _ => {
+                let (start, end) = get_string(bytes, i);
+                if end > start {
+                    let b = &bytes[start..end];
+                    if let Ok(s) = std::str::from_utf8(b) {
+                        let mut lexeme;
+                        if s == "null" {
+                            lexeme = Lexeme {
+                                s: &bytes[start..end],
+                                start: start,
+                                _type: b'n',
+                            };
+                            lexemes.push(lexeme);
 
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::LBracket,
-                lexeme: "{".to_owned(),
-            });
-        } else if bytes[i] == b'}' {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::RBracket,
-                lexeme: "}".to_owned(),
-            });
-        } else if bytes[i] == b',' {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::Commas,
-                lexeme: ",".to_owned(),
-            });
-        } else if bytes[i] == b'[' {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::SLBracket,
-                lexeme: "[".to_owned(),
-            });
-        } else if bytes[i] == b']' {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::SRBracket,
-                lexeme: "]".to_owned(),
-            });
-        } else if bytes[i] == b':' {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
-            res.push(Token {
-                _type: TokenType::Colon,
-                lexeme: ":".to_owned(),
-            })
-        } else if is_whitespace(bytes[i]) {
-            add_token(&mut res, i, start, s);
-            start = i + 1;
+                        }
+                        if s == "false" || s == "true" {
+                            lexeme = Lexeme {
+                                s: &bytes[start..end],
+                                start: start,
+                                _type: b't',
+                            };
+                            lexemes.push(lexeme);
+
+                        }
+                        if b[0] == b'0' || b[0] == b'1' || b[0] == b'2' || b[0] == b'3' || b[0] == b'4' || b[0] == b'5' || b[0] == b'6' || b[0] == b'7' || b[0] == b'8' || b[0] == b'9' {
+                            lexeme = Lexeme {
+                                s: &bytes[start..end],
+                                start: start,
+                                _type: b'u',
+                            };
+                            lexemes.push(lexeme);
+
+                        }
+                    }
+                }
+                i = end;
+            }
         }
-        i += 1;
     }
-    res
-}
-fn compare_tokens(v1: &Vec<Token>, v2: &Vec<Token>) {
-    assert_eq!(v1.len(), v2.len());
-    for i in 0..v1.len() {
-        assert_eq!(v1[i].lexeme, v2[i].lexeme);
-        assert_eq!(v1[i]._type, v2[i]._type);
-    }
+
+    return lexemes;
 }
 
+fn get_string_in_quote(s: &[u8], i: usize) -> (usize, usize) {
+    if s.len() <= i {
+        return (i + 5, i + 1); // we are at the end of the string
+    }
+    let mut j = i;
+    loop {
+        if s[j] == b'"' || j >= s.len() {
+            break;
+        }
+        j += 1;
+    }
+    return (i, j);
+}
+fn get_string(bytes: &[u8], i: usize) -> (usize, usize) {
+    if bytes.len() <= i {
+        return (i + 5, i);
+    }
+    let mut j = i;
+    let mut end = j;
+    loop {
+        if j >= bytes.len() {
+            break;
+        }
+        match bytes[j] {
+            b'{' | b'}' | b'[' | b']' | b':' | b',' | b'"' | b' ' | b'\t' | b'\n' | b'\r' => {
+                end = j;
+                break;
+            }
+            _ => {
+                j += 1;
+            }
+        }
+    }
+    (i, end)
+}
 #[cfg(test)]
 mod test {
-    use crate::lexer::*;
-    #[test]
-    fn test_lexer_colon() {
-        let term = ":";
-        let v1 = vec![Token {
-            _type: TokenType::Colon,
-            lexeme: term.to_owned(),
-        }];
-        let v2 = get_lexemes(term);
-        compare_tokens(&v1, &v2)
+    use super::*;
+    fn compare_lexemes(lft: &Vec<Lexeme<'_>>, rght: &Vec<Lexeme<'_>>) {
+        assert_eq!(lft.len(), rght.len());
+        for i in 0..lft.len() {
+            assert_eq!(lft[i], rght[i]);
+        }
     }
     #[test]
-    fn test_lexer_commas() {
-        let term = ",";
-        let v1 = vec![
-            Token {
-            _type: TokenType::Commas,
-            lexeme: term.to_owned(),
-        }];
-        let v2 = get_lexemes(term);
-        compare_tokens(&v1, &v2)
-    }
-    #[test]
-    fn test_lexer_s_bracket() {
-        let term = "[";
-        let v1 = vec![Token {
-            _type: TokenType::SLBracket,
-            lexeme: term.to_owned(),
-        }];
-        let v2 = get_lexemes(term);
-        compare_tokens(&v1, &v2)
-    }
-    #[test]
-    fn test_lexer_s_r_bracket() {
-        let term = "]";
-        let v1 = vec![Token {
-            _type: TokenType::SRBracket,
-            lexeme: term.to_owned(),
-        }];
-        let v2 = get_lexemes(term);
-        compare_tokens(&v1, &v2)
-    }
-    #[test]
-    fn test_lexer_bracket() {
-        let s = "{ }";
-        let v1 = vec![
-            Token {
-                _type: TokenType::LBracket,
-                lexeme: "{".to_owned(),
-            },
-            Token {
-                _type: TokenType::RBracket,
-                lexeme: "}".to_owned(),
-            },
-        ];
-        let v2 = get_lexemes(s);
-        compare_tokens(&v1, &v2)
-    }
-    #[test]
-    fn test_lexers() {
-        let s = r#"{ "key"  : "value" }"#;
-        let v1 = vec![
-            Token {
-                _type: TokenType::LBracket,
-                lexeme: "{".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "key".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::Colon,
-                lexeme: ":".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "value".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::RBracket,
-                lexeme: "}".to_owned(),
-            },
-        ];
-        let v2 = get_lexemes(s);
-        compare_tokens(&v1, &v2)
-    }
-    #[test]
-    fn test_lexers_keyword() {
-        let s = r#"{"key": [ true, false, null ]  }"#;
-        let v1 = vec![
-            Token {
-                _type: TokenType::LBracket,
-                lexeme: "{".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "key".to_owned(),
-            },
-            Token {
-                _type: TokenType::Quote,
-                lexeme: "\"".to_owned(),
-            },
-            Token {
-                _type: TokenType::Colon,
-                lexeme: ":".to_owned(),
-            },
-            Token {
-                _type: TokenType::SLBracket,
-                lexeme: "[".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "true".to_owned(),
-            },
-            Token {
-                _type: TokenType::Commas,
-                lexeme: ",".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "false".to_owned(),
-            },
-            Token {
-                _type: TokenType::Commas,
-                lexeme: ",".to_owned(),
-            },
-            Token {
-                _type: TokenType::String,
-                lexeme: "null".to_owned(),
-            },
+    fn test_lexemes() {
+        println!("Testing.");
+        for &t in &[b'{', b'}', b'[', b']', b':', b','] {
+            let bytes = &[t];
+            let s = std::str::from_utf8(bytes).unwrap();
+            let res = gen_lexemes(s);
+            let exp = vec![Lexeme {
+                s: bytes,
+                start: 0,
+                _type: t,
+            }];
+            compare_lexemes(&res, &exp);
+        }
+        {
+            let res = gen_lexemes("{}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 1,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+        {
+            let res = gen_lexemes("{     }");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 6,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
 
-            Token {
-                _type: TokenType::SRBracket,
-                lexeme: "]".to_owned(),
-            },
-            Token {
-                _type: TokenType::RBracket,
-                lexeme: "}".to_owned(),
-            },
-        ];
-        let v2 = get_lexemes(s);
-        compare_tokens(&v1, &v2)
+        {
+            let res = gen_lexemes("       {     }");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 7,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 13,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+
+        {
+            let res = gen_lexemes("{[]}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 1,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 2,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 3,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+
+        {
+            let res = gen_lexemes("{  []}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 3,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 4,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 5,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+        {
+            let res = gen_lexemes("{  [    ]}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 3,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 8,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 9,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+
+        {
+            let res = gen_lexemes("{[true]}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 1,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b't', b'r', b'u', b'e'],
+                    start: 2,
+                    _type: b't',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 6,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 7,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+        {
+            let res = gen_lexemes("{[true, false]}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 1,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b't', b'r', b'u', b'e'],
+                    start: 2,
+                    _type: b't',
+                },
+                Lexeme {
+                    s: &[b','],
+                    start: 6,
+                    _type: b',',
+                },
+                Lexeme {
+                    s: &[b'f', b'a', b'l', b's', b'e'],
+                    start: 8,
+                    _type: b't',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 13,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 14,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
+        {
+            let res = gen_lexemes("{[\"k1\":true]}");
+            let exp = vec![
+                Lexeme {
+                    s: &[b'{'],
+                    start: 0,
+                    _type: b'{',
+                },
+                Lexeme {
+                    s: &[b'['],
+                    start: 1,
+                    _type: b'[',
+                },
+                Lexeme {
+                    s: &[b'"'],
+                    start: 2,
+                    _type: b'"',
+                },
+                Lexeme {
+                    s: &[b'k', b'1'],
+                    start: 3,
+                    _type: b's',
+                },
+                Lexeme {
+                    s: &[b'"'],
+                    start: 5,
+                    _type: b'"',
+                },
+                Lexeme {
+                    s: &[b':'],
+                    start: 6,
+                    _type: b':',
+                },
+                Lexeme {
+                    s: &[b't', b'r', b'u', b'e'],
+                    start: 7,
+                    _type: b't',
+                },
+                Lexeme {
+                    s: &[b']'],
+                    start: 11,
+                    _type: b']',
+                },
+                Lexeme {
+                    s: &[b'}'],
+                    start: 12,
+                    _type: b'}',
+                },
+            ];
+            compare_lexemes(&res, &exp);
+        }
     }
 }
