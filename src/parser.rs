@@ -70,23 +70,18 @@ fn parse_object<'a, 'b>(
     let mut m = HashMap::new();
     let mut lexemes = &lexemes[1..];
     loop {
-        if let Ok((Value::String(s), lexeme)) = parse_string(lexemes) {
+        if let (Value::String(s), lexeme) = parse_string(lexemes)? {
             if lexeme[0]._type != b':' {
                 return Err("colon expected.");
             }
             lexemes = &lexeme[1..];
-            if let Ok((value, lexeme)) = parse_value(lexemes) {
-                m.insert(s, value);
-                if lexeme[0]._type != b',' {
-                    lexemes = lexeme;
-                    break;
-                }
-                lexemes = &lexeme[1..];
-            } else {
-                return Err("not a value.");
+            let (value, lexeme) = parse_value(lexemes)?;
+            m.insert(s, value);
+            if lexeme[0]._type != b',' {
+                lexemes = lexeme;
+                break;
             }
-        } else {
-            return Err("not a string.");
+            lexemes = &lexeme[1..];
         }
     }
     if lexemes.len() < 1 || lexemes[0]._type != b'}' {
@@ -110,18 +105,15 @@ fn parse_array<'a, 'b>(
         if lexemes[0]._type == b']' {
             break;
         }
-        if let Ok((value, lexeme)) = parse_value(lexemes) {
-            vec.push(value);
-            if lexeme.len() == 0 {
-                return Err("array expected.");
-            }
-            if lexeme[0]._type == b',' {
-                lexemes = &lexeme[1..];
-            } else {
-                lexemes = lexeme;
-            }
+        let (value, lexeme) = parse_value(lexemes)?;
+        vec.push(value);
+        if lexeme.len() == 0 {
+            return Err("array expected.");
+        }
+        if lexeme[0]._type == b',' {
+            lexemes = &lexeme[1..];
         } else {
-            return Err("expect value inside array");
+            lexemes = lexeme;
         }
     }
     Ok((Value::Array(vec), &lexemes[1..]))
