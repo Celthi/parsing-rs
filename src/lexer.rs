@@ -67,22 +67,13 @@ pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
     tokens
 }
 
-// add delimiter token
-fn add_delimiter_token<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
-    if start >= bytes.len() {
-        return start;
-    }
-    let token = Token {
-        s: &bytes[start..start + 1],
-        start,
-        _type: get_token_type(bytes[start]),
-    };
-    tokens.push(token);
-    start + 1
-}
 // input `start` is the next character to process.
 // return the index of the next character to process.
-fn add_quoted_string<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+fn add_quoted_string<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) -> usize {
     let mut start = add_quote_token(bytes, start, tokens);
     start = get_string_in_quote(bytes, start, tokens);
     add_quote_token(bytes, start, tokens)
@@ -100,9 +91,29 @@ fn add_quote_token<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<To
     }
     start
 }
+
 fn is_delimiters(c: u8) -> bool {
     c == b'{' || c == b'}' || c == b'[' || c == b']' || c == b':' || c == b','
 }
+
+// add delimiter token
+fn add_delimiter_token<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) -> usize {
+    if start >= bytes.len() {
+        return start;
+    }
+    let token = Token {
+        s: &bytes[start..start + 1],
+        start,
+        _type: get_token_type(bytes[start]),
+    };
+    tokens.push(token);
+    start + 1
+}
+
 fn add_keyword_or_number<'a, 'b>(
     bytes: &'a [u8],
     start: usize,
@@ -122,32 +133,57 @@ fn add_keyword_or_number<'a, 'b>(
             _type: TokenType::Number,
         };
         tokens.push(token);
-    } else if let Ok(s) = std::str::from_utf8(b) {
-            match s {
-                "null" => {
-                    let token = Token {
-                        s: &bytes[start..end],
-                        start,
-                        _type: TokenType::Null,
-                    };
-                    tokens.push(token);
-                }
-                "false" | "true" => {
-                    let token = Token {
-                        s: &bytes[start..end],
-                        start,
-                        _type: TokenType::Boolean,
-                    };
-                    tokens.push(token);
-                }
-                _ => {
-                    panic!("Unsupported keyword or number.");
-                }
+    } else {
+        let s = std::str::from_utf8(b).unwrap(); // let's panic if unsupported character is met.
+        match s {
+            "null" => {
+                add_null_token(bytes, start, "null".len(), tokens);
             }
+            "false" => {
+                add_boolean_token(bytes, start, "false".len(), tokens);
+            }
+            "true" => {
+                add_boolean_token(bytes, start, "true".len(), tokens);
+            }
+            _ => {
+                panic!("Unsupported keyword or number.");
+            }
+        }
     }
     end
 }
-fn get_string_in_quote<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+fn add_null_token<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    length: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) {
+    let token = Token {
+        s: &bytes[start..start + length],
+        start,
+        _type: TokenType::Null,
+    };
+    tokens.push(token);
+}
+fn add_boolean_token<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    length: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) {
+    let token = Token {
+        s: &bytes[start..start + length],
+        start,
+        _type: TokenType::Boolean,
+    };
+    tokens.push(token);
+}
+
+fn get_string_in_quote<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) -> usize {
     if start >= bytes.len() {
         return start;
     }
