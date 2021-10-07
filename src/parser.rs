@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::lexer::{gen_lexemes, Lexeme};
+use crate::lexer::{generate_tokens, Token};
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Null,
@@ -12,126 +12,126 @@ pub enum Value {
 }
 
 pub fn parse(s: &str) -> Result<Value, &'static str> {
-    let lexemes = gen_lexemes(s);
-    let (value, lexemes) = parse_value(&lexemes)?;
-    if lexemes.len() > 0 {
+    let tokens = generate_tokens(s);
+    let (value, tokens) = parse_value(&tokens)?;
+    if tokens.len() > 0 {
         return Err("trailing string after json.");
     }
     Ok(value)
 }
 
 fn parse_value<'a, 'b>(
-    lexemes: &'a [Lexeme<'b>],
-) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
-    if lexemes.len() == 0 {
-        return Ok((Value::String("".to_owned()), lexemes));
+    tokens: &'a [Token<'b>],
+) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+    if tokens.len() == 0 {
+        return Ok((Value::String("".to_owned()), tokens));
     }
-    if lexemes[0]._type == b'{' {
-        return parse_object(lexemes);
+    if tokens[0]._type == b'{' {
+        return parse_object(tokens);
     }
-    if lexemes[0]._type == b'[' {
-        return parse_array(lexemes);
+    if tokens[0]._type == b'[' {
+        return parse_array(tokens);
     }
-    if lexemes[0]._type == b'"' {
-        return parse_string(lexemes);
+    if tokens[0]._type == b'"' {
+        return parse_string(tokens);
     }
-    if lexemes[0]._type == b'n' {
-        return Ok((Value::Null, &lexemes[1..]));
+    if tokens[0]._type == b'n' {
+        return Ok((Value::Null, &tokens[1..]));
     }
-    if lexemes[0]._type == b't' {
+    if tokens[0]._type == b't' {
         return Ok((
-            Value::Bool(if lexemes[0].s == "true".as_bytes() {
+            Value::Bool(if tokens[0].s == "true".as_bytes() {
                 true
             } else {
                 false
             }),
-            &lexemes[1..],
+            &tokens[1..],
         ));
     }
     // if it is number, for simplicity, we use f64 always
-    if lexemes[0]._type == b'u' {
-        if let Ok(num) = std::str::from_utf8(lexemes[0].s).unwrap().parse::<f64>() {
-            return Ok((Value::Number(num), &lexemes[1..]));
+    if tokens[0]._type == b'u' {
+        if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
+            return Ok((Value::Number(num), &tokens[1..]));
         }
     }
     Err("unsupported format.")
 }
 
 fn parse_object<'a, 'b>(
-    lexemes: &'a [Lexeme<'b>],
-) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
-    if lexemes.len() < 2 || lexemes[0]._type != b'{' {
+    tokens: &'a [Token<'b>],
+) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+    if tokens.len() < 2 || tokens[0]._type != b'{' {
         return Err("Not a object.");
     }
     // empty object
-    if lexemes[1]._type == b'}' {
-        return Ok((Value::Object(HashMap::new()), &lexemes[2..]));
+    if tokens[1]._type == b'}' {
+        return Ok((Value::Object(HashMap::new()), &tokens[2..]));
     }
     let mut m = HashMap::new();
-    let mut lexemes = &lexemes[1..];
+    let mut tokens = &tokens[1..];
     loop {
-        if let (Value::String(s), lexeme) = parse_string(lexemes)? {
-            if lexeme[0]._type != b':' {
+        if let (Value::String(s), token) = parse_string(tokens)? {
+            if token[0]._type != b':' {
                 return Err("colon expected.");
             }
-            lexemes = &lexeme[1..];
-            let (value, lexeme) = parse_value(lexemes)?;
+            tokens = &token[1..];
+            let (value, token) = parse_value(tokens)?;
             m.insert(s, value);
-            if lexeme[0]._type != b',' {
-                lexemes = lexeme;
+            if token[0]._type != b',' {
+                tokens = token;
                 break;
             }
-            lexemes = &lexeme[1..];
+            tokens = &token[1..];
         }
     }
-    if lexemes.len() < 1 || lexemes[0]._type != b'}' {
+    if tokens.len() < 1 || tokens[0]._type != b'}' {
         return Err("right bracket expected.");
     }
-    return Ok((Value::Object(m), &lexemes[1..]));
+    return Ok((Value::Object(m), &tokens[1..]));
 }
 
 fn parse_array<'a, 'b>(
-    lexemes: &'a [Lexeme<'b>],
-) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
-    if lexemes.len() < 2 || lexemes[0]._type != b'[' {
+    tokens: &'a [Token<'b>],
+) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+    if tokens.len() < 2 || tokens[0]._type != b'[' {
         return Err("expect array");
     }
     let mut vec = vec![];
-    let mut lexemes = &lexemes[1..];
+    let mut tokens = &tokens[1..];
     loop {
-        if lexemes.len() == 0 {
+        if tokens.len() == 0 {
             return Err("array expected.");
         }
-        if lexemes[0]._type == b']' {
+        if tokens[0]._type == b']' {
             break;
         }
-        let (value, lexeme) = parse_value(lexemes)?;
+        let (value, token) = parse_value(tokens)?;
         vec.push(value);
-        if lexeme.len() == 0 {
+        if token.len() == 0 {
             return Err("array expected.");
         }
-        if lexeme[0]._type == b',' {
-            lexemes = &lexeme[1..];
+        if token[0]._type == b',' {
+            tokens = &token[1..];
         } else {
-            lexemes = lexeme;
+            tokens = token;
         }
     }
-    Ok((Value::Array(vec), &lexemes[1..]))
+    Ok((Value::Array(vec), &tokens[1..]))
 }
 
 fn parse_string<'a, 'b>(
-    lexemes: &'a [Lexeme<'b>],
-) -> Result<(Value, &'a [Lexeme<'b>]), &'static str> {
-    if lexemes.len() < 3
-        || lexemes[0]._type != b'"'
-        || lexemes[2]._type != b'"'
-        || lexemes[1]._type != b's'
+    tokens: &'a [Token<'b>],
+) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+    if tokens.len() < 3
+        || tokens[0]._type != b'"'
+        || tokens[2]._type != b'"'
+        || tokens[1]._type != b's'
     {
         return Err("expected string");
     }
     Ok((
-        Value::String(std::str::from_utf8(lexemes[1].s).unwrap().to_owned()),
-        &lexemes[3..],
+        Value::String(std::str::from_utf8(tokens[1].s).unwrap().to_owned()),
+        &tokens[3..],
     ))
 }
 

@@ -1,6 +1,6 @@
 use std::vec::Vec;
 #[derive(PartialEq, Debug)]
-pub struct Lexeme<'a> {
+pub struct Token<'a> {
     pub s: &'a [u8],
     pub start: usize, // start position
     pub _type: u8,
@@ -10,13 +10,13 @@ pub struct Lexeme<'a> {
 /// b's' -> string in quote
 /// b't' -> true of false
 
-/// use DFA to produce the lexemes from the string s.
-pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
+/// use DFA to produce the tokens from the string s.
+pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
     if s.len() == 0 {
         return vec![];
     }
     let bytes = s.as_bytes();
-    let mut lexemes = vec![];
+    let mut tokens = vec![];
     let mut i = 0;
     loop {
         if i >= bytes.len() {
@@ -24,54 +24,55 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
         }
         match bytes[i] {
             b'"' => {
-                i = add_quoted_string(bytes, i, &mut lexemes);
+                i = add_quoted_string(bytes, i, &mut tokens);
             }
             b'{' | b'}' | b'[' | b']' | b':' | b',' => {
-                let lexeme = Lexeme {
+                // add delimiter token
+                let token = Token {
                     s: &bytes[i..i + 1],
                     start: i,
                     _type: bytes[i],
                 };
-                lexemes.push(lexeme);
+                tokens.push(token);
                 i += 1;
             }
             c if c.is_ascii_whitespace() => {
                 i += 1;
             }
             _ => {
-                i = add_keyword_or_number(bytes, i, &mut lexemes);
+                i = add_keyword_or_number(bytes, i, &mut tokens);
             }
         }
     }
 
-    return lexemes;
+    return tokens;
 }
 
-fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, lexemes: &'b mut Vec<Lexeme<'a>>) -> usize  {
+fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize  {
     let mut i = i;
-    let lexeme = Lexeme {
+    let token = Token {
         s: &bytes[i..i+1],
         start: i,
         _type: b'"',
     };
-    lexemes.push(lexeme);
+    tokens.push(token);
     if i + 1 >= bytes.len() {
         return i+1
     }
     if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
-        let lexeme = Lexeme {
+        let token = Token {
             s: &bytes[start..end],
             start,
             _type: b's',
         };
-        lexemes.push(lexeme);
+        tokens.push(token);
         if end < bytes.len() && bytes[end] == b'"' {
-            let lexeme = Lexeme {
+            let token = Token {
                 s: &bytes[end..end + 1],
                 start: end,
                 _type: b'"',
             };
-            lexemes.push(lexeme);
+            tokens.push(token);
             i = end + 1;
         } else {
             i = end;
@@ -81,36 +82,36 @@ fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, lexemes: &'b mut Vec<Lex
     }
     i 
 }
-fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, lexemes: &'b mut Vec<Lexeme<'a>>) -> usize {
+fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
     if let Some((start, end)) = get_string(bytes, i) {
         let b = &bytes[start..end];
         if let Ok(s) = std::str::from_utf8(b) {
-            let mut lexeme;
+            let mut token;
             if s == "null" {
-                lexeme = Lexeme {
+                token = Token {
                     s: &bytes[start..end],
                     start: start,
                     _type: b'n',
                 };
-                lexemes.push(lexeme);
+                tokens.push(token);
 
             }
             if s == "false" || s == "true" {
-                lexeme = Lexeme {
+                token = Token {
                     s: &bytes[start..end],
                     start: start,
                     _type: b't',
                 };
-                lexemes.push(lexeme);
+                tokens.push(token);
 
             }
             if b[0].is_ascii_digit() {
-                lexeme = Lexeme {
+                token = Token {
                     s: &bytes[start..end],
                     start: start,
                     _type: b'u',
                 };
-                lexemes.push(lexeme);
+                tokens.push(token);
 
             }
         }
@@ -157,278 +158,278 @@ fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod test {
     use super::*;
-    fn compare_lexemes(lft: &Vec<Lexeme<'_>>, rght: &Vec<Lexeme<'_>>) {
+    fn compare_tokens(lft: &Vec<Token<'_>>, rght: &Vec<Token<'_>>) {
         assert_eq!(lft.len(), rght.len());
         for i in 0..lft.len() {
             assert_eq!(lft[i], rght[i]);
         }
     }
     #[test]
-    fn test_lexemes() {
+    fn test_tokenize() {
         println!("Testing.");
         for &t in &[b'{', b'}', b'[', b']', b':', b','] {
             let bytes = &[t];
             let s = std::str::from_utf8(bytes).unwrap();
-            let res = gen_lexemes(s);
-            let exp = vec![Lexeme {
+            let res = generate_tokens(s);
+            let exp = vec![Token {
                 s: bytes,
                 start: 0,
                 _type: t,
             }];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
         {
-            let res = gen_lexemes("{}");
+            let res = generate_tokens("{}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 1,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
         {
-            let res = gen_lexemes("{     }");
+            let res = generate_tokens("{     }");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 6,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
 
         {
-            let res = gen_lexemes("       {     }");
+            let res = generate_tokens("       {     }");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 7,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 13,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
 
         {
-            let res = gen_lexemes("{[]}");
+            let res = generate_tokens("{[]}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 1,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 2,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 3,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
 
         {
-            let res = gen_lexemes("{  []}");
+            let res = generate_tokens("{  []}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 3,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 4,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 5,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
         {
-            let res = gen_lexemes("{  [    ]}");
+            let res = generate_tokens("{  [    ]}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 3,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 8,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 9,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
 
         {
-            let res = gen_lexemes("{[true]}");
+            let res = generate_tokens("{[true]}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 1,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b't', b'r', b'u', b'e'],
                     start: 2,
                     _type: b't',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 6,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 7,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
         {
-            let res = gen_lexemes("{[true, false]}");
+            let res = generate_tokens("{[true, false]}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 1,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b't', b'r', b'u', b'e'],
                     start: 2,
                     _type: b't',
                 },
-                Lexeme {
+                Token {
                     s: &[b','],
                     start: 6,
                     _type: b',',
                 },
-                Lexeme {
+                Token {
                     s: &[b'f', b'a', b'l', b's', b'e'],
                     start: 8,
                     _type: b't',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 13,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 14,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
         {
-            let res = gen_lexemes("{[\"k1\":true]}");
+            let res = generate_tokens("{[\"k1\":true]}");
             let exp = vec![
-                Lexeme {
+                Token {
                     s: &[b'{'],
                     start: 0,
                     _type: b'{',
                 },
-                Lexeme {
+                Token {
                     s: &[b'['],
                     start: 1,
                     _type: b'[',
                 },
-                Lexeme {
+                Token {
                     s: &[b'"'],
                     start: 2,
                     _type: b'"',
                 },
-                Lexeme {
+                Token {
                     s: &[b'k', b'1'],
                     start: 3,
                     _type: b's',
                 },
-                Lexeme {
+                Token {
                     s: &[b'"'],
                     start: 5,
                     _type: b'"',
                 },
-                Lexeme {
+                Token {
                     s: &[b':'],
                     start: 6,
                     _type: b':',
                 },
-                Lexeme {
+                Token {
                     s: &[b't', b'r', b'u', b'e'],
                     start: 7,
                     _type: b't',
                 },
-                Lexeme {
+                Token {
                     s: &[b']'],
                     start: 11,
                     _type: b']',
                 },
-                Lexeme {
+                Token {
                     s: &[b'}'],
                     start: 12,
                     _type: b'}',
                 },
             ];
-            compare_lexemes(&res, &exp);
+            compare_tokens(&res, &exp);
         }
     }
 }
