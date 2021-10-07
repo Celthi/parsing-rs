@@ -36,10 +36,9 @@ fn get_token_type(b: u8)->TokenType {
 /// use DFA to produce the tokens from the string s.
 /// 
 pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
-    if s.len() == 0 {
+    if s.is_empty() {
         return vec![];
     }
-
 
     let bytes = s.as_bytes();
     let mut tokens = vec![];
@@ -71,20 +70,18 @@ pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
         }
     }
 
-    return tokens;
+    tokens
 }
 
 fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize  {
-    let mut i = i;
     let token = Token {
         s: &bytes[i..i+1],
         start: i,
         _type: TokenType::Quote,
     };
     tokens.push(token);
-    if i + 1 >= bytes.len() {
-        return i+1
-    }
+
+    let mut i = i;
     if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
         let token = Token {
             s: &bytes[start..end],
@@ -104,10 +101,11 @@ fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Toke
             i = end;
         }
     } else {
-        i = i+1;
+        i += 1;
     }
     i 
 }
+
 fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
     if let Some((start, end)) = get_string(bytes, i) {
         let b = &bytes[start..end];
@@ -116,7 +114,7 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
             if s == "null" {
                 token = Token {
                     s: &bytes[start..end],
-                    start: start,
+                    start,
                     _type: TokenType::Null,
                 };
                 tokens.push(token);
@@ -125,7 +123,7 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
             if s == "false" || s == "true" {
                 token = Token {
                     s: &bytes[start..end],
-                    start: start,
+                    start,
                     _type: TokenType::Boolean,
                 };
                 tokens.push(token);
@@ -134,7 +132,7 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
             if b[0].is_ascii_digit() {
                 token = Token {
                     s: &bytes[start..end],
-                    start: start,
+                    start,
                     _type: TokenType::Number,
                 };
                 tokens.push(token);
@@ -159,6 +157,7 @@ fn get_string_in_quote(s: &[u8], i: usize) -> Option<(usize, usize)> {
     }
     Some((i, j))
 }
+
 fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
     if bytes.len() <= i {
         return None;
@@ -172,6 +171,7 @@ fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
     let end = iter.next().unwrap().len();
     Some((i, i + end-1))
 }
+
 #[cfg(test)]
 mod test {
     use super::*;

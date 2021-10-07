@@ -18,7 +18,7 @@ pub fn parse(s: &str) -> Result<Value, &'static str> {
     let tokens = generate_tokens(s);
     // then construct the Json value from the tokens.
     let (value, tokens) = parse_value(&tokens)?;
-    if tokens.len() > 0 {
+    if !tokens.is_empty() {
         return Err("trailing string after json.");
     }
     Ok(value)
@@ -26,36 +26,32 @@ pub fn parse(s: &str) -> Result<Value, &'static str> {
 
 // construct a value from the tokens and return the value and any left tokens.
 fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
-    if tokens.len() == 0 {
+    if tokens.is_empty() {
         return Ok((Value::String("".to_owned()), tokens));
     }
     match tokens[0]._type {
         TokenType::LeftBracket => {
-            return parse_object(tokens);
+            parse_object(tokens)
         }
         TokenType::LeftSquareBracket => {
-            return parse_array(tokens);
+            parse_array(tokens)
         }
         TokenType::Quote => {
-            return parse_string(tokens);
+            parse_string(tokens)
         }
         TokenType::Null => {
-            return Ok((Value::Null, &tokens[1..]));
+            Ok((Value::Null, &tokens[1..]))
         }
         TokenType::Boolean => {
-            return Ok((
-                Value::Bool(if tokens[0].s == "true".as_bytes() {
-                    true
-                } else {
-                    false
-                }),
+            Ok((
+                Value::Bool(tokens[0].s == "true".as_bytes()),
                 &tokens[1..],
-            ));
+            ))
         }
         // if it is number, for simplicity, we use f64 always
         TokenType::Number => {
             if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
-                return Ok((Value::Number(num), &tokens[1..]));
+                Ok((Value::Number(num), &tokens[1..]))
             } else {
                 Err("cannot parse the string into the numbers.")
             }
@@ -79,8 +75,7 @@ fn parse_object<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b
             if token[0]._type != TokenType::Colon {
                 return Err("colon expected.");
             }
-            tokens = &token[1..];
-            let (value, token) = parse_value(tokens)?;
+            let (value, token) = parse_value(&token[1..])?;
             m.insert(s, value);
             // if there is no more key value pair to deal with.
             if token[0]._type != TokenType::Comma {
@@ -90,10 +85,10 @@ fn parse_object<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b
             tokens = &token[1..];
         }
     }
-    if tokens.len() < 1 || tokens[0]._type != TokenType::RightBracket {
+    if tokens.is_empty() || tokens[0]._type != TokenType::RightBracket {
         return Err("right bracket expected.");
     }
-    return Ok((Value::Object(m), &tokens[1..]));
+    Ok((Value::Object(m), &tokens[1..]))
 }
 
 fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
@@ -102,8 +97,9 @@ fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
     }
     let mut vec = vec![];
     let mut tokens = &tokens[1..];
+
     loop {
-        if tokens.len() == 0 {
+        if tokens.is_empty() {
             return Err("array expected.");
         }
         if tokens[0]._type == TokenType::RightSquareBracket {
@@ -111,7 +107,7 @@ fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
         }
         let (value, token) = parse_value(tokens)?;
         vec.push(value);
-        if token.len() == 0 {
+        if token.is_empty() {
             return Err("array expected.");
         }
         if token[0]._type == TokenType::Comma {
