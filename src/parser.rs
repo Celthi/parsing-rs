@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 /// A parser to parse JSON from string written with top-down parsing method.
 
-use crate::lexer::{generate_tokens, Token};
+use crate::lexer::{generate_tokens, Token, TokenType};
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Null,
@@ -24,24 +24,25 @@ pub fn parse(s: &str) -> Result<Value, &'static str> {
     Ok(value)
 }
 
+// construct a value from the tokens and return the value and any left tokens.
 fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() == 0 {
         return Ok((Value::String("".to_owned()), tokens));
     }
     match tokens[0]._type {
-        b'{' => {
+        TokenType::LeftBracket => {
             return parse_object(tokens);
         }
-        b'[' => {
+        TokenType::LeftSquareBracket => {
             return parse_array(tokens);
         }
-        b'"' => {
+        TokenType::Quote => {
             return parse_string(tokens);
         }
-        b'n' => {
+        TokenType::Null => {
             return Ok((Value::Null, &tokens[1..]));
         }
-        b't' => {
+        TokenType::Boolean => {
             return Ok((
                 Value::Bool(if tokens[0].s == "true".as_bytes() {
                     true
@@ -52,11 +53,11 @@ fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
             ));
         }
         // if it is number, for simplicity, we use f64 always
-        b'u' => {
+        TokenType::Number => {
             if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
                 return Ok((Value::Number(num), &tokens[1..]));
             } else {
-                Err("cannot parse the string into the number.")
+                Err("cannot parse the string into the numbers.")
             }
         }
         _ => Err("unsupported format."),
@@ -64,38 +65,39 @@ fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
 }
 
 fn parse_object<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
-    if tokens.len() < 2 || tokens[0]._type != b'{' {
+    if tokens.len() < 2 || tokens[0]._type != TokenType::LeftBracket {
         return Err("Not a object.");
     }
     // empty object
-    if tokens[1]._type == b'}' {
+    if tokens[1]._type == TokenType::RightBracket {
         return Ok((Value::Object(HashMap::new()), &tokens[2..]));
     }
     let mut m = HashMap::new();
     let mut tokens = &tokens[1..];
     loop {
         if let (Value::String(s), token) = parse_string(tokens)? {
-            if token[0]._type != b':' {
+            if token[0]._type != TokenType::Colon {
                 return Err("colon expected.");
             }
             tokens = &token[1..];
             let (value, token) = parse_value(tokens)?;
             m.insert(s, value);
-            if token[0]._type != b',' {
+            // if there is no more key value pair to deal with.
+            if token[0]._type != TokenType::Comma {
                 tokens = token;
                 break;
             }
             tokens = &token[1..];
         }
     }
-    if tokens.len() < 1 || tokens[0]._type != b'}' {
+    if tokens.len() < 1 || tokens[0]._type != TokenType::RightBracket {
         return Err("right bracket expected.");
     }
     return Ok((Value::Object(m), &tokens[1..]));
 }
 
 fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
-    if tokens.len() < 2 || tokens[0]._type != b'[' {
+    if tokens.len() < 2 || tokens[0]._type != TokenType::LeftSquareBracket {
         return Err("expect array");
     }
     let mut vec = vec![];
@@ -104,7 +106,7 @@ fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
         if tokens.len() == 0 {
             return Err("array expected.");
         }
-        if tokens[0]._type == b']' {
+        if tokens[0]._type == TokenType::RightSquareBracket {
             break;
         }
         let (value, token) = parse_value(tokens)?;
@@ -112,7 +114,7 @@ fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
         if token.len() == 0 {
             return Err("array expected.");
         }
-        if token[0]._type == b',' {
+        if token[0]._type == TokenType::Comma {
             tokens = &token[1..];
         } else {
             tokens = token;
@@ -123,9 +125,9 @@ fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
 
 fn parse_string<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() < 3
-        || tokens[0]._type != b'"'
-        || tokens[2]._type != b'"'
-        || tokens[1]._type != b's'
+        || tokens[0]._type != TokenType::Quote
+        || tokens[2]._type != TokenType::Quote
+        || tokens[1]._type != TokenType::String
     {
         return Err("expected string");
     }
