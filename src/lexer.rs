@@ -23,6 +23,8 @@ pub struct Token<'a> {
     pub _type: TokenType,
 }
 
+const DELIMITERS: [u8; 6] = [b'{', b'}', b'[', b']', b':', b','];
+
 fn get_token_type(b: u8) -> TokenType {
     let mut delimiter_map = HashMap::new();
     delimiter_map.insert(b'{', TokenType::LeftBracket);
@@ -92,8 +94,27 @@ fn add_quote_token<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<To
     start
 }
 
+fn get_string_in_quote<'a, 'b>(
+    bytes: &'a [u8],
+    start: usize,
+    tokens: &'b mut Vec<Token<'a>>,
+) -> usize {
+    if start >= bytes.len() {
+        return start;
+    }
+    let mut iter = bytes[start..].split_inclusive(|&c| c == b'"');
+    let end = start + iter.next().unwrap().len() - 1;
+    let token = Token {
+        s: &bytes[start..end],
+        start,
+        _type: TokenType::String,
+    };
+    tokens.push(token);
+    end
+}
+
 fn is_delimiters(c: u8) -> bool {
-    c == b'{' || c == b'}' || c == b'[' || c == b']' || c == b':' || c == b','
+    DELIMITERS.iter().any(|&d| d == c)
 }
 
 // add delimiter token
@@ -177,25 +198,6 @@ fn add_boolean_token<'a, 'b>(
         _type: TokenType::Boolean,
     };
     tokens.push(token);
-}
-
-fn get_string_in_quote<'a, 'b>(
-    bytes: &'a [u8],
-    start: usize,
-    tokens: &'b mut Vec<Token<'a>>,
-) -> usize {
-    if start >= bytes.len() {
-        return start;
-    }
-    let mut iter = bytes[start..].split_inclusive(|&c| c == b'"');
-    let length = iter.next().unwrap().len();
-    let token = Token {
-        s: &bytes[start..(start + length - 1)],
-        start,
-        _type: TokenType::String,
-    };
-    tokens.push(token);
-    start + length - 1
 }
 
 #[cfg(test)]
