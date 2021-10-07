@@ -73,36 +73,25 @@ pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
 
     tokens
 }
-// input `i` is the next character to process.
+// input `start` is the next character to process.
 // return the index of the next character to process.
-fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
-    let token = Token {
-        s: &bytes[i..i + 1],
-        start: i,
-        _type: TokenType::Quote,
-    };
-    tokens.push(token);
-
-    let mut i = i + 1;
-    if i < bytes.len() {
-        i = get_string_in_quote(bytes, i, tokens);
-        i = add_quote_token(bytes, i, tokens);
-    }
-    i
+fn add_quoted_string<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+    let mut start = add_quote_token(bytes, start, tokens);
+    start = get_string_in_quote(bytes, start, tokens);
+    add_quote_token(bytes, start, tokens)
 }
 
-fn add_quote_token<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
-    if i < bytes.len() && bytes[i] == b'"' {
+fn add_quote_token<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+    if start < bytes.len() && bytes[start] == b'"' {
         let token = Token {
-            s: &bytes[i..i + 1],
-            start: i,
+            s: &bytes[start..start + 1],
+            start,
             _type: TokenType::Quote,
         };
         tokens.push(token);
-        i + 1
-    } else {
-        i
+        return start + 1;
     }
+    start
 }
 fn is_delimiters(c: u8) -> bool {
     c == b'{' || c == b'}' || c == b'[' || c == b']' || c == b':' || c == b','
@@ -112,7 +101,7 @@ fn add_keyword_or_number<'a, 'b>(
     start: usize,
     tokens: &'b mut Vec<Token<'a>>,
 ) -> usize {
-    if bytes.len() <= start {
+    if start >= bytes.len() {
         return start;
     }
     let mut iter = bytes[start..].split_inclusive(|&c| c.is_ascii_whitespace() || is_delimiters(c));
@@ -151,25 +140,28 @@ fn add_keyword_or_number<'a, 'b>(
     }
     end
 }
-fn get_string_in_quote<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
-    let mut iter = bytes[i..].split_inclusive(|&c| c == b'"');
+fn get_string_in_quote<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+    if start >= bytes.len() {
+        return start;
+    }
+    let mut iter = bytes[start..].split_inclusive(|&c| c == b'"');
     let length = iter.next().unwrap().len();
     let token = Token {
-        s: &bytes[i..(i + length - 1)],
-        start: i,
+        s: &bytes[start..(start + length - 1)],
+        start,
         _type: TokenType::String,
     };
     tokens.push(token);
-    i + length - 1
+    start + length - 1
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    fn compare_tokens(lft: &Vec<Token<'_>>, rght: &Vec<Token<'_>>) {
-        assert_eq!(lft.len(), rght.len());
-        for i in 0..lft.len() {
-            assert_eq!(lft[i], rght[i]);
+    fn compare_tokens(left: &Vec<Token<'_>>, right: &Vec<Token<'_>>) {
+        assert_eq!(left.len(), right.len());
+        for i in 0..left.len() {
+            assert_eq!(left[i], right[i]);
         }
     }
     #[test]
