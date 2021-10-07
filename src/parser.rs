@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 /// A parser to parse JSON from string written with top-down parsing method.
-
 use crate::lexer::{generate_tokens, Token, TokenType};
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -30,24 +29,11 @@ fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>
         return Ok((Value::String("".to_owned()), tokens));
     }
     match tokens[0]._type {
-        TokenType::LeftBracket => {
-            parse_object(tokens)
-        }
-        TokenType::LeftSquareBracket => {
-            parse_array(tokens)
-        }
-        TokenType::Quote => {
-            parse_string(tokens)
-        }
-        TokenType::Null => {
-            Ok((Value::Null, &tokens[1..]))
-        }
-        TokenType::Boolean => {
-            Ok((
-                Value::Bool(tokens[0].s == "true".as_bytes()),
-                &tokens[1..],
-            ))
-        }
+        TokenType::LeftBracket => parse_object(tokens),
+        TokenType::LeftSquareBracket => parse_array(tokens),
+        TokenType::Quote => parse_string(tokens),
+        TokenType::Null => Ok((Value::Null, &tokens[1..])),
+        TokenType::Boolean => Ok((Value::Bool(tokens[0].s == "true".as_bytes()), &tokens[1..])),
         // if it is number, for simplicity, we use f64 always
         TokenType::Number => {
             if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
