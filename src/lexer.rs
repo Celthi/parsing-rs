@@ -163,23 +163,14 @@ fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
     if bytes.len() <= i {
         return None;
     }
-    let mut j = i;
-    let mut end = j;
-    loop {
-        if j >= bytes.len() {
-            break;
+    let mut iter = bytes[i..].split_inclusive(|c| match c {
+        b'{' | b'}' | b'[' | b']' | b':' | b',' | b'"' | b' ' | b'\t' | b'\n' | b'\r' => {
+            true
         }
-        match bytes[j] {
-            b'{' | b'}' | b'[' | b']' | b':' | b',' | b'"' | b' ' | b'\t' | b'\n' | b'\r' => {
-                end = j;
-                break;
-            }
-            _ => {
-                j += 1;
-            }
-        }
-    }
-    Some((i, end))
+        _ => false
+    });
+    let end = iter.next().unwrap().len();
+    Some((i, i + end-1))
 }
 #[cfg(test)]
 mod test {
