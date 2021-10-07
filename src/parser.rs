@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+/// A parser to parse JSON from string written with top-down parsing method.
+
 use crate::lexer::{generate_tokens, Token};
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -12,7 +14,9 @@ pub enum Value {
 }
 
 pub fn parse(s: &str) -> Result<Value, &'static str> {
+    // first tokenize the string into tokens
     let tokens = generate_tokens(s);
+    // then construct the Json value from the tokens.
     let (value, tokens) = parse_value(&tokens)?;
     if tokens.len() > 0 {
         return Err("trailing string after json.");
@@ -20,46 +24,46 @@ pub fn parse(s: &str) -> Result<Value, &'static str> {
     Ok(value)
 }
 
-fn parse_value<'a, 'b>(
-    tokens: &'a [Token<'b>],
-) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+fn parse_value<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() == 0 {
         return Ok((Value::String("".to_owned()), tokens));
     }
-    if tokens[0]._type == b'{' {
-        return parse_object(tokens);
-    }
-    if tokens[0]._type == b'[' {
-        return parse_array(tokens);
-    }
-    if tokens[0]._type == b'"' {
-        return parse_string(tokens);
-    }
-    if tokens[0]._type == b'n' {
-        return Ok((Value::Null, &tokens[1..]));
-    }
-    if tokens[0]._type == b't' {
-        return Ok((
-            Value::Bool(if tokens[0].s == "true".as_bytes() {
-                true
-            } else {
-                false
-            }),
-            &tokens[1..],
-        ));
-    }
-    // if it is number, for simplicity, we use f64 always
-    if tokens[0]._type == b'u' {
-        if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
-            return Ok((Value::Number(num), &tokens[1..]));
+    match tokens[0]._type {
+        b'{' => {
+            return parse_object(tokens);
         }
+        b'[' => {
+            return parse_array(tokens);
+        }
+        b'"' => {
+            return parse_string(tokens);
+        }
+        b'n' => {
+            return Ok((Value::Null, &tokens[1..]));
+        }
+        b't' => {
+            return Ok((
+                Value::Bool(if tokens[0].s == "true".as_bytes() {
+                    true
+                } else {
+                    false
+                }),
+                &tokens[1..],
+            ));
+        }
+        // if it is number, for simplicity, we use f64 always
+        b'u' => {
+            if let Ok(num) = std::str::from_utf8(tokens[0].s).unwrap().parse::<f64>() {
+                return Ok((Value::Number(num), &tokens[1..]));
+            } else {
+                Err("cannot parse the string into the number.")
+            }
+        }
+        _ => Err("unsupported format."),
     }
-    Err("unsupported format.")
 }
 
-fn parse_object<'a, 'b>(
-    tokens: &'a [Token<'b>],
-) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+fn parse_object<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() < 2 || tokens[0]._type != b'{' {
         return Err("Not a object.");
     }
@@ -90,9 +94,7 @@ fn parse_object<'a, 'b>(
     return Ok((Value::Object(m), &tokens[1..]));
 }
 
-fn parse_array<'a, 'b>(
-    tokens: &'a [Token<'b>],
-) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+fn parse_array<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() < 2 || tokens[0]._type != b'[' {
         return Err("expect array");
     }
@@ -119,9 +121,7 @@ fn parse_array<'a, 'b>(
     Ok((Value::Array(vec), &tokens[1..]))
 }
 
-fn parse_string<'a, 'b>(
-    tokens: &'a [Token<'b>],
-) -> Result<(Value, &'a [Token<'b>]), &'static str> {
+fn parse_string<'a, 'b>(tokens: &'a [Token<'b>]) -> Result<(Value, &'a [Token<'b>]), &'static str> {
     if tokens.len() < 3
         || tokens[0]._type != b'"'
         || tokens[2]._type != b'"'
