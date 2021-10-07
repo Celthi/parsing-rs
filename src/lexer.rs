@@ -53,14 +53,7 @@ pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
                 i = add_quoted_string(bytes, i, &mut tokens);
             }
             c if is_delimiters(c) => {
-                // add delimiter token
-                let token = Token {
-                    s: &bytes[i..i + 1],
-                    start: i,
-                    _type: get_token_type(bytes[i]),
-                };
-                tokens.push(token);
-                i += 1;
+                i = add_delimiter_token(bytes, i, &mut tokens);
             }
             c if c.is_ascii_whitespace() => {
                 i += 1;
@@ -72,6 +65,20 @@ pub fn generate_tokens(s: &str) -> Vec<Token<'_>> {
     }
 
     tokens
+}
+
+// add delimiter token
+fn add_delimiter_token<'a, 'b>(bytes: &'a [u8], start: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
+    if start >= bytes.len() {
+        return start;
+    }
+    let token = Token {
+        s: &bytes[start..start + 1],
+        start,
+        _type: get_token_type(bytes[start]),
+    };
+    tokens.push(token);
+    start + 1
 }
 // input `start` is the next character to process.
 // return the index of the next character to process.
