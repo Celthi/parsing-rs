@@ -9,7 +9,6 @@ pub struct Lexeme<'a> {
 /// b'u' -> number
 /// b's' -> string in quote
 /// b't' -> true of false
-/// b'k' -> keyword
 
 /// use DFA to produce the lexemes from the string s.
 pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
@@ -25,36 +24,7 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
         }
         match bytes[i] {
             b'"' => {
-                let lexeme = Lexeme {
-                    s: &bytes[i..i + 1],
-                    start: i,
-                    _type: b'"',
-                };
-                lexemes.push(lexeme);
-                if i + 1 >= bytes.len() {
-                    break;
-                }
-                if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
-                    let lexeme = Lexeme {
-                        s: &bytes[start..end],
-                        start,
-                        _type: b's',
-                    };
-                    lexemes.push(lexeme);
-                    if end < s.len() && bytes[end] == b'"' {
-                        let lexeme = Lexeme {
-                            s: &bytes[end..end + 1],
-                            start: end,
-                            _type: b'"',
-                        };
-                        lexemes.push(lexeme);
-                        i = end + 1;
-                    } else {
-                        i = end;
-                    }
-                } else {
-                    i = i+1;
-                }
+                i = add_quoted_string(bytes, i, &mut lexemes);
             }
             b'{' | b'}' | b'[' | b']' | b':' | b',' => {
                 let lexeme = Lexeme {
@@ -65,46 +35,11 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
                 lexemes.push(lexeme);
                 i += 1;
             }
-            b' ' | b'\t' | b'\n' | b'\r' => {
+            c if c.is_ascii_whitespace() => {
                 i += 1;
             }
             _ => {
-                if let Some((start, end)) = get_string(bytes, i) {
-                    let b = &bytes[start..end];
-                    if let Ok(s) = std::str::from_utf8(b) {
-                        let mut lexeme;
-                        if s == "null" {
-                            lexeme = Lexeme {
-                                s: &bytes[start..end],
-                                start: start,
-                                _type: b'n',
-                            };
-                            lexemes.push(lexeme);
-
-                        }
-                        if s == "false" || s == "true" {
-                            lexeme = Lexeme {
-                                s: &bytes[start..end],
-                                start: start,
-                                _type: b't',
-                            };
-                            lexemes.push(lexeme);
-
-                        }
-                        if b[0].is_ascii_digit() {
-                            lexeme = Lexeme {
-                                s: &bytes[start..end],
-                                start: start,
-                                _type: b'u',
-                            };
-                            lexemes.push(lexeme);
-
-                        }
-                    }
-                    i = end;
-                } else {
-
-                }
+                i = add_keyword_or_number(bytes, i, &mut lexemes);
             }
         }
     }
@@ -112,6 +47,78 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
     return lexemes;
 }
 
+fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, lexemes: &'b mut Vec<Lexeme<'a>>) -> usize  {
+    let mut i = i;
+    let lexeme = Lexeme {
+        s: &bytes[i..i+1],
+        start: i,
+        _type: b'"',
+    };
+    lexemes.push(lexeme);
+    if i + 1 >= bytes.len() {
+        return i+1
+    }
+    if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
+        let lexeme = Lexeme {
+            s: &bytes[start..end],
+            start,
+            _type: b's',
+        };
+        lexemes.push(lexeme);
+        if end < bytes.len() && bytes[end] == b'"' {
+            let lexeme = Lexeme {
+                s: &bytes[end..end + 1],
+                start: end,
+                _type: b'"',
+            };
+            lexemes.push(lexeme);
+            i = end + 1;
+        } else {
+            i = end;
+        }
+    } else {
+        i = i+1;
+    }
+    i 
+}
+fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, lexemes: &'b mut Vec<Lexeme<'a>>) -> usize {
+    if let Some((start, end)) = get_string(bytes, i) {
+        let b = &bytes[start..end];
+        if let Ok(s) = std::str::from_utf8(b) {
+            let mut lexeme;
+            if s == "null" {
+                lexeme = Lexeme {
+                    s: &bytes[start..end],
+                    start: start,
+                    _type: b'n',
+                };
+                lexemes.push(lexeme);
+
+            }
+            if s == "false" || s == "true" {
+                lexeme = Lexeme {
+                    s: &bytes[start..end],
+                    start: start,
+                    _type: b't',
+                };
+                lexemes.push(lexeme);
+
+            }
+            if b[0].is_ascii_digit() {
+                lexeme = Lexeme {
+                    s: &bytes[start..end],
+                    start: start,
+                    _type: b'u',
+                };
+                lexemes.push(lexeme);
+
+            }
+        }
+        end
+    } else {
+        i
+    }
+}
 fn get_string_in_quote(s: &[u8], i: usize) -> Option<(usize, usize)> {
     if s.len() <= i {
         return None; // we are at the end of the string
