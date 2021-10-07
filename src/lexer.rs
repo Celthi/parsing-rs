@@ -15,6 +15,7 @@ pub enum TokenType {
     Colon,
     Comma,
 }
+
 #[derive(PartialEq, Debug)]
 pub struct Token<'a> {
     pub s: &'a [u8],
@@ -81,7 +82,7 @@ fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Toke
     };
     tokens.push(token);
 
-    let mut i = i;
+
     if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
         let token = Token {
             s: &bytes[start..end],
@@ -89,6 +90,7 @@ fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Toke
             _type: TokenType::String,
         };
         tokens.push(token);
+
         if end < bytes.len() && bytes[end] == b'"' {
             let token = Token {
                 s: &bytes[end..end + 1],
@@ -96,14 +98,13 @@ fn add_quoted_string<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Toke
                 _type: TokenType::Quote,
             };
             tokens.push(token);
-            i = end + 1;
+            end + 1
         } else {
-            i = end;
+            end
         }
     } else {
-        i += 1;
+        i + 1
     }
-    i 
 }
 
 fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<Token<'a>>) -> usize {
@@ -118,7 +119,6 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
                     _type: TokenType::Null,
                 };
                 tokens.push(token);
-
             }
             if s == "false" || s == "true" {
                 token = Token {
@@ -136,7 +136,6 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
                     _type: TokenType::Number,
                 };
                 tokens.push(token);
-
             }
         }
         end
@@ -144,18 +143,15 @@ fn add_keyword_or_number<'a, 'b>(bytes: &'a [u8], i: usize, tokens: &'b mut Vec<
         i
     }
 }
-fn get_string_in_quote(s: &[u8], i: usize) -> Option<(usize, usize)> {
-    if s.len() <= i {
+fn get_string_in_quote(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
+    if bytes.len() <= i {
         return None; // we are at the end of the string
     }
-    let mut j = i;
-    loop {
-        if s[j] == b'"' || j >= s.len() {
-            break;
-        }
-        j += 1;
-    }
-    Some((i, j))
+    let mut iter = bytes[i..].split_inclusive(|&c| {
+        c == b'"'
+    });
+    let end = iter.next().unwrap().len();
+    Some((i, i + end - 1))
 }
 
 fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
