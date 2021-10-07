@@ -91,7 +91,7 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
                             lexemes.push(lexeme);
 
                         }
-                        if b[0] == b'0' || b[0] == b'1' || b[0] == b'2' || b[0] == b'3' || b[0] == b'4' || b[0] == b'5' || b[0] == b'6' || b[0] == b'7' || b[0] == b'8' || b[0] == b'9' {
+                        if b[0].is_ascii_digit() {
                             lexeme = Lexeme {
                                 s: &bytes[start..end],
                                 start: start,
