@@ -34,8 +34,7 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
                 if i + 1 >= bytes.len() {
                     break;
                 }
-                let (start, end) = get_string_in_quote(bytes, i + 1);
-                if end > start {
+                if let Some((start, end)) = get_string_in_quote(bytes, i + 1) {
                     let lexeme = Lexeme {
                         s: &bytes[start..end],
                         start,
@@ -54,7 +53,7 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
                         i = end;
                     }
                 } else {
-                    i = end;
+                    i = i+1;
                 }
             }
             b'{' | b'}' | b'[' | b']' | b':' | b',' => {
@@ -70,8 +69,7 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
                 i += 1;
             }
             _ => {
-                let (start, end) = get_string(bytes, i);
-                if end > start {
+                if let Some((start, end)) = get_string(bytes, i) {
                     let b = &bytes[start..end];
                     if let Ok(s) = std::str::from_utf8(b) {
                         let mut lexeme;
@@ -103,8 +101,10 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
 
                         }
                     }
+                    i = end;
+                } else {
+
                 }
-                i = end;
             }
         }
     }
@@ -112,9 +112,9 @@ pub fn gen_lexemes(s: &str) -> Vec<Lexeme<'_>> {
     return lexemes;
 }
 
-fn get_string_in_quote(s: &[u8], i: usize) -> (usize, usize) {
+fn get_string_in_quote(s: &[u8], i: usize) -> Option<(usize, usize)> {
     if s.len() <= i {
-        return (i + 5, i + 1); // we are at the end of the string
+        return None; // we are at the end of the string
     }
     let mut j = i;
     loop {
@@ -123,11 +123,11 @@ fn get_string_in_quote(s: &[u8], i: usize) -> (usize, usize) {
         }
         j += 1;
     }
-    return (i, j);
+    Some((i, j))
 }
-fn get_string(bytes: &[u8], i: usize) -> (usize, usize) {
+fn get_string(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
     if bytes.len() <= i {
-        return (i + 5, i);
+        return None;
     }
     let mut j = i;
     let mut end = j;
@@ -145,7 +145,7 @@ fn get_string(bytes: &[u8], i: usize) -> (usize, usize) {
             }
         }
     }
-    (i, end)
+    Some((i, end))
 }
 #[cfg(test)]
 mod test {

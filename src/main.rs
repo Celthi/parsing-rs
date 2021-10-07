@@ -4,6 +4,6 @@ mod lexer;
 mod parser;
 fn main() {
     println!("Hello, world!");
-    let _v = parser::parse_lt(r#"{"key":"value"}"#);
+    let _v = parser::parse(r#"{"key":"value"}"#);
 
 }
